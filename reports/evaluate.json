@@ -1,0 +1,36 @@
+{
+  "seasons": {
+    "2015-16": {
+      "n": 1316,
+      "model_logloss": 0.5802626239737816,
+      "model_brier": 0.19868787164243412,
+      "elo_logloss": 0.5829868055959158,
+      "market_logloss": 0.5688420673808591,
+      "market_brier": 0.19380447558634775
+    },
+    "2016-17": {
+      "n": 1309,
+      "model_logloss": 0.6249152935914282,
+      "model_brier": 0.21780594526978717,
+      "elo_logloss": 0.628020468195122,
+      "market_logloss": 0.6084184064697457,
+      "market_brier": 0.21058932097029193
+    },
+    "2017-18": {
+      "n": 1312,
+      "model_logloss": 0.6149319326043191,
+      "model_brier": 0.21321654840674029,
+      "elo_logloss": 0.6194237115750842,
+      "market_logloss": 0.5909211396656898,
+      "market_brier": 0.202986315719963
+    }
+  },
+  "average": {
+    "model_logloss": 0.606703283389843,
+    "model_brier": 0.20990345510632055,
+    "elo_logloss": 0.6101436617887074,
+    "market_logloss": 0.5893938711720982,
+    "market_brier": 0.20246003742553423
+  },
+  "beats_market_alarm": false
+}
