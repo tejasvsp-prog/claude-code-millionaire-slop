@@ -60,17 +60,23 @@ def mov_multiplier(margin: float, winner_elo_diff: float) -> float:
 
 
 def elo_update(
-    home_elo: float, away_elo: float, margin: float, params: EloParams = EloParams()
+    home_elo: float,
+    away_elo: float,
+    margin: float,
+    params: EloParams = EloParams(),
+    neutral: bool = False,
 ) -> tuple[float, float, float]:
     """Return (pre-game home win prob, new home Elo, new away Elo).
 
-    `margin` = home points minus away points.
+    `margin` = home points minus away points. At a neutral site no
+    home-court bonus is applied.
     """
-    p_home = expected_score(home_elo + params.home_adv, away_elo)
+    hca = 0.0 if neutral else params.home_adv
+    p_home = expected_score(home_elo + hca, away_elo)
     home_won = 1.0 if margin > 0 else 0.0
     mult = 1.0
     if params.use_mov:
-        diff = home_elo + params.home_adv - away_elo
+        diff = home_elo + hca - away_elo
         winner_diff = diff if home_won else -diff
         mult = mov_multiplier(abs(margin), winner_diff)
     shift = params.k * mult * (home_won - p_home)
@@ -85,7 +91,8 @@ def run_elo(games: pd.DataFrame, params: EloParams = EloParams()) -> pd.DataFram
     """Walk through games in date order, adding pre-game Elo columns.
 
     Requires GAME_ID, GAME_DATE, SEASON, HOME_TEAM_ID, AWAY_TEAM_ID, MARGIN.
-    Adds HOME_ELO_PRE, AWAY_ELO_PRE, ELO_PROB_HOME.
+    Optional NEUTRAL (1 = neutral site). Adds HOME_ELO_PRE, AWAY_ELO_PRE,
+    ELO_PROB_HOME.
     """
     required = {"GAME_ID", "GAME_DATE", "SEASON", "HOME_TEAM_ID", "AWAY_TEAM_ID", "MARGIN"}
     missing = required - set(games.columns)
@@ -102,8 +109,9 @@ def run_elo(games: pd.DataFrame, params: EloParams = EloParams()) -> pd.DataFram
     current_season = None
     home_pre, away_pre, probs = [], [], []
 
-    for season, h, a, margin in zip(
-        df["SEASON"], df["HOME_TEAM_ID"], df["AWAY_TEAM_ID"], df["MARGIN"]
+    neutral_col = df["NEUTRAL"] if "NEUTRAL" in df.columns else pd.Series(0, index=df.index)
+    for season, h, a, margin, neutral in zip(
+        df["SEASON"], df["HOME_TEAM_ID"], df["AWAY_TEAM_ID"], df["MARGIN"], neutral_col
     ):
         if season != current_season:
             if current_season is not None:
@@ -111,7 +119,7 @@ def run_elo(games: pd.DataFrame, params: EloParams = EloParams()) -> pd.DataFram
             current_season = season
         rh = ratings.get(h, params.initial)
         ra = ratings.get(a, params.initial)
-        p, new_h, new_a = elo_update(rh, ra, margin, params)
+        p, new_h, new_a = elo_update(rh, ra, margin, params, neutral=bool(neutral))
         home_pre.append(rh)
         away_pre.append(ra)
         probs.append(p)

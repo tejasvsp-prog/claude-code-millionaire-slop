@@ -117,3 +117,11 @@ def test_season_metrics_shape():
     m = season_metrics(run_elo(_games()))
     assert list(m["SEASON"]) == ["2022-23", "2023-24", "ALL"]
     assert m.loc[m.SEASON == "ALL", "N"].item() == 6
+
+
+def test_neutral_site_has_no_home_advantage():
+    p, _, _ = elo_update(1500, 1500, 5, neutral=True)
+    assert p == pytest.approx(0.5)
+    g = _games()
+    g["NEUTRAL"] = [1, 0, 0, 0, 0, 0]
+    assert run_elo(g).loc[0, "ELO_PROB_HOME"] == pytest.approx(0.5)
