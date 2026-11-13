@@ -40,3 +40,35 @@ Holdout seasons 2018-19 and 2019-20 are never used by the loop.
 
 Learned: these numbers match the earlier backtest for the same seasons,
 which cross-checks the harness.
+
+---
+
+## Exp 1: tune Elo settings inside the training seasons (2026-11-13). REVERTED
+
+- **Idea:** Elo difference is the strongest feature by far, and its settings
+  (K, season carryover, home advantage) were never tuned.
+- **Change:** in `src/model.py`, a per-fold grid search (36 settings):
+  - K ∈ {15, 20, 25, 30}
+  - share reverted to the mean each season ∈ {0.25, 0.40, 0.55}
+  - home advantage ∈ {60, 80, 100}
+
+  Each setting is scored by Elo's own log loss on that fold's training
+  seasons only. Elo forecasts each game before seeing it, so this is
+  out-of-sample (time-series CV). The chosen Elo then feeds the usual
+  features. A leakage test confirmed the choice doesn't depend on
+  test-season results.
+- **Chosen in every fold:** K=20, revert 0.25 (both the existing defaults)
+  and home advantage 80 (was 100).
+
+| Season | LL before → after | Brier before → after |
+|---|---|---|
+| 2015-16 | 0.5803 → 0.5805 | 0.1987 → 0.1988 |
+| 2016-17 | 0.6249 → 0.6249 | 0.2178 → 0.2178 |
+| 2017-18 | 0.6149 → 0.6153 | 0.2132 → 0.2134 |
+| **Average** | **0.6067 → 0.6069** | 0.2099 → 0.2100 |
+
+- **Decision: REVERTED.** The average got worse; no season improved.
+- **Learned:** the public Elo defaults are already optimal on these
+  seasons. Only home advantage moved, and the logistic regression absorbs
+  that through its intercept. Better Elo settings won't help; gains have to
+  come from new information or a better way to use margins.
