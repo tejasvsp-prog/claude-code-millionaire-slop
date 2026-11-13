@@ -3,17 +3,18 @@ import pandas as pd
 import pytest
 
 from src.elo import run_elo
-from src.features import MODEL_FEATURES, REST_CAP, SHRINK_GAMES, build_features
+from src.features import ALL_FEATURES, REST_CAP, SHRINK_GAMES, build_features
+from src.geo import arena, haversine_km
 
 
 def _games():
     rows = [
         # id, date, season, home, away, margin
-        ("g1", "2020-01-01", "2019-20", "A", "B", 10),
-        ("g2", "2020-01-02", "2019-20", "A", "C", -4),   # A back-to-back
-        ("g3", "2020-01-05", "2019-20", "B", "A", 6),
-        ("g4", "2020-01-05", "2019-20", "C", "D", 3),
-        ("g5", "2020-10-20", "2020-21", "A", "B", 1),    # new season: reset
+        ("g1", "2020-01-01", "2019-20", "BOS", "NYK", 10),
+        ("g2", "2020-01-02", "2019-20", "BOS", "LAL", -4),   # BOS back-to-back
+        ("g3", "2020-01-05", "2019-20", "NYK", "BOS", 6),
+        ("g4", "2020-01-05", "2019-20", "LAL", "DEN", 3),
+        ("g5", "2020-10-20", "2020-21", "BOS", "NYK", 1),    # new season: reset
     ]
     df = pd.DataFrame(rows, columns=["GAME_ID", "GAME_DATE", "SEASON", "HOME_TEAM_ID",
                                      "AWAY_TEAM_ID", "MARGIN"])
@@ -66,14 +67,52 @@ def test_no_leakage_from_own_or_later_results():
         f = _feats(g)
         for earlier in order[: i + 1]:
             np.testing.assert_allclose(
-                f.loc[earlier, MODEL_FEATURES].astype(float),
-                base.loc[earlier, MODEL_FEATURES].astype(float),
+                f.loc[earlier, ALL_FEATURES].astype(float),
+                base.loc[earlier, ALL_FEATURES].astype(float),
                 err_msg=f"flipping {gid} changed features of {earlier}",
             )
 
 
 def test_same_day_double_game_rejected():
     g = _games()
-    g.loc[3, ["HOME_TEAM_ID", "AWAY_TEAM_ID"]] = ["A", "D"]  # A plays twice on Jan 5
+    g.loc[3, ["HOME_TEAM_ID", "AWAY_TEAM_ID"]] = ["BOS", "DEN"]  # BOS plays twice on Jan 5
     with pytest.raises(ValueError):
         _feats(g)
+
+
+def test_travel_and_time_zone():
+    f = _feats()
+    # g1 at BOS, g3 at NYK: NYK played g1 in Boston, then hosts g3 at home.
+    bos, nyk = arena("BOS", 2019), arena("NYK", 2019)
+    assert f.loc["g3", "HOME_TRAVEL_KM"] == pytest.approx(haversine_km(*bos[:2], *nyk[:2]))
+    # LAL: g2 in Boston, then g4 at home in LA: 3 time zones.
+    assert f.loc["g4", "HOME_TZ_CHANGE"] == 3
+    assert f.loc["g4", "HOME_TRAVEL_KM"] > 4000
+    assert f.loc["g1", "HOME_TRAVEL_KM"] == 0 and f.loc["g1", "AWAY_TZ_CHANGE"] == 0
+
+
+def test_three_in_four():
+    rows = [("x1", "2020-01-01", "BOS", "NYK"), ("x2", "2020-01-02", "LAL", "BOS"),
+            ("x3", "2020-01-04", "BOS", "DEN"), ("x4", "2020-01-06", "BOS", "NYK")]
+    g = pd.DataFrame(rows, columns=["GAME_ID", "GAME_DATE", "HOME_TEAM_ID", "AWAY_TEAM_ID"])
+    g["SEASON"], g["MARGIN"] = "2019-20", 5
+    g["HOME_WIN"] = 1
+    f = _feats(g)
+    assert f.loc["x3", "HOME_3IN4"] == 1   # Jan 1, 2, 4
+    assert f.loc["x4", "HOME_3IN4"] == 0   # only Jan 4 within previous 3 days
+    assert f.loc["x3", "AWAY_3IN4"] == 0
+
+
+def test_altitude():
+    f = _feats()
+    assert f.loc["g4", "ALTITUDE"] == 0  # DEN is away
+    g = _games()
+    g.loc[3, ["HOME_TEAM_ID", "AWAY_TEAM_ID"]] = ["DEN", "LAL"]
+    assert _feats(g).loc["g4", "ALTITUDE"] == 1
+
+
+def test_geo_helpers():
+    assert haversine_km(0, 0, 0, 1) == pytest.approx(111.19, abs=0.1)
+    assert arena("OKC", 2007)[2] == -8 and arena("OKC", 2008)[2] == -6  # Seattle -> OKC
+    with pytest.raises(KeyError):
+        arena("XXX", 2010)

@@ -79,7 +79,7 @@ def _synthetic_games(n_seasons=4, seed=0):
     from src.odds import prob_to_american
 
     rng = np.random.default_rng(seed)
-    teams = list("ABCDEFGHIJ")
+    teams = ["BOS", "NYK", "LAL", "DEN", "MIA", "CHI", "DAL", "POR", "UTA", "ATL"]
     strength = rng.normal(0, 5, len(teams))
     rows = []
     for s in range(n_seasons):
@@ -110,9 +110,20 @@ def test_end_to_end_market_unbeatable_on_synthetic_data():
     allrow = metrics[metrics.SEASON == "ALL"].iloc[0]
     assert allrow.MARKET_LOGLOSS < allrow.MODEL_LOGLOSS
     assert allrow.MARKET_LOGLOSS < allrow.ELO_LOGLOSS
-    model = betting[(betting.PROBS == "MODEL")].iloc[0]
-    assert model.ROI < bt.ROI_ALARM
+    # Market-based fits can at best roughly match the truth, never beat it by much.
+    assert allrow.BLEND_LOGLOSS > allrow.MARKET_LOGLOSS - 0.005
+    assert allrow.MKT_RECAL_LOGLOSS > allrow.MARKET_LOGLOSS - 0.005
+    for name in ("MODEL", "BLEND", "MKT_RECAL"):
+        assert betting[betting.PROBS == name].iloc[0].ROI < bt.ROI_ALARM
     assert set(preds.SEASON) == {"2012-13", "2013-14"}
+    assert preds.GAME_ID.is_unique
+
+
+def test_walk_forward_skips_rows_with_missing_features():
+    feats = bt.add_market_logit(bt.build_features(bt.run_elo(_synthetic_games())))
+    feats.loc[feats.index[-5:], "MARKET_LOGIT"] = np.nan
+    preds = bt.walk_forward_predict(feats, "2012-13", 1, ["MARKET_LOGIT"], "X")
+    assert preds["X"].isna().sum() == 5
 
 
 def test_end_to_end_detects_leak():
@@ -120,6 +131,6 @@ def test_end_to_end_detects_leak():
     games = _synthetic_games()
     feats = bt.build_features(bt.run_elo(games))
     feats["LEAK"] = feats["HOME_WIN"]
-    preds = bt.walk_forward_predict(feats, "2012-13", 1, features=bt.MODEL_FEATURES + ["LEAK"])
+    preds = bt.walk_forward_predict(feats, "2012-13", 1, features=bt.ALL_FEATURES + ["LEAK"])
     roi = bt.roi_summary(bt.pick_bets(preds, "MODEL_PROB_HOME", 0.0))["ROI"]
     assert roi > bt.ROI_ALARM

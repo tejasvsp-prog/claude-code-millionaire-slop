@@ -4,7 +4,8 @@ Predict NBA game outcomes from past data and backtest whether the model
 beats the betting market's no-vig closing line. Backtest only; no live betting.
 
 **Result so far:** the model beats a standard Elo baseline but not the
-market, and betting it at closing lines loses about 3% per bet. See
+market. Adding its features on top of the market's probability makes
+predictions worse, and betting at closing lines loses about the vig. See
 [RESULTS.md](RESULTS.md).
 
 ## Run it
@@ -13,7 +14,7 @@ market, and betting it at closing lines loses about 3% per bet. See
 pip install -r requirements.txt
 python -m src.sbr        # download + clean 2007-08..2019-20 games and closing odds
 python -m src.backtest   # walk-forward backtest, writes reports/
-python -m pytest         # 80 tests
+python -m pytest         # 85 tests
 ```
 
 ## Pipeline
@@ -23,7 +24,7 @@ python -m pytest         # 80 tests
 | Raw data | `src/sbr.py` (Sports Book Reviews odds archive) | `data/raw/sbr/*.csv` (cached) |
 | Clean games + no-vig market probability | `src/sbr.py` | `data/processed/games.csv` |
 | Elo baseline | `src/elo.py` | `data/processed/elo_probs.csv` |
-| Pre-game features | `src/features.py` | (in memory) |
+| Pre-game features (form, rest, travel, altitude) | `src/features.py`, `src/geo.py` | (in memory) |
 | Walk-forward model, metrics, betting sim | `src/backtest.py` | `reports/`, `data/processed/backtest_predictions.csv` |
 | Odds math | `src/odds.py` | |
 | Log loss / Brier | `src/metrics.py` | |

@@ -32,7 +32,7 @@ from sklearn.pipeline import make_pipeline
 from sklearn.preprocessing import StandardScaler
 
 from src.elo import run_elo
-from src.features import MODEL_FEATURES, build_features
+from src.features import ALL_FEATURES, build_features
 from src.metrics import brier_score, log_loss
 from src.odds import american_to_decimal, bet_profit
 
@@ -41,7 +41,19 @@ PROCESSED_DIR = ROOT / "data" / "processed"
 REPORTS_DIR = ROOT / "reports"
 
 ROI_ALARM = 0.10
-PROB_COLS = {"MODEL": "MODEL_PROB_HOME", "ELO": "ELO_PROB_HOME", "MARKET": "MARKET_PROB_HOME"}
+PROB_COLS = {
+    "MODEL": "MODEL_PROB_HOME",          # features only, no market info
+    "BLEND": "BLEND_PROB_HOME",          # market logit + features
+    "MKT_RECAL": "MKT_RECAL_PROB_HOME",  # market logit only, refit (bias correction)
+    "ELO": "ELO_PROB_HOME",
+    "MARKET": "MARKET_PROB_HOME",
+}
+# name -> feature list for the walk-forward models
+MODEL_SPECS = {
+    "MODEL": ALL_FEATURES,
+    "BLEND": ["MARKET_LOGIT"] + ALL_FEATURES,
+    "MKT_RECAL": ["MARKET_LOGIT"],
+}
 
 log = logging.getLogger(__name__)
 
@@ -67,20 +79,30 @@ def make_model(c: float = 1.0):
 
 
 def walk_forward_predict(
-    df: pd.DataFrame, first_test: str, warmup: int = 1, features: list[str] = MODEL_FEATURES
+    df: pd.DataFrame,
+    first_test: str,
+    warmup: int = 1,
+    features: list[str] = ALL_FEATURES,
+    out_col: str = "MODEL_PROB_HOME",
 ) -> pd.DataFrame:
-    """Return test-season rows with MODEL_PROB_HOME filled in."""
+    """Return test-season rows with `out_col` filled in.
+
+    Rows with NaN in any feature (e.g. no market line) are left out of
+    training, and get NaN predictions.
+    """
     out = []
     for train_seasons, test_season in walk_forward_splits(
         df["SEASON"].unique().tolist(), first_test, warmup
     ):
-        train = df[df["SEASON"].isin(train_seasons)]
+        train = df[df["SEASON"].isin(train_seasons)].dropna(subset=features)
         test = df[df["SEASON"] == test_season].copy()
         assert train["GAME_DATE"].max() < test["GAME_DATE"].min(), "train overlaps test"
         model = make_model().fit(train[features], train["HOME_WIN"])
-        test["MODEL_PROB_HOME"] = model.predict_proba(test[features])[:, 1]
-        log.info("test %s: trained on %d games (%s..%s)",
-                 test_season, len(train), train_seasons[0], train_seasons[-1])
+        ok = test[features].notna().all(axis=1)
+        test[out_col] = np.nan
+        test.loc[ok, out_col] = model.predict_proba(test.loc[ok, features])[:, 1]
+        log.info("%s test %s: trained on %d games (%s..%s)",
+                 out_col, test_season, len(train), train_seasons[0], train_seasons[-1])
         out.append(test)
     return pd.concat(out, ignore_index=True)
 
@@ -93,11 +115,12 @@ def compare_metrics(df: pd.DataFrame) -> pd.DataFrame:
 
     Only games with a market line are scored, so all three use the same games.
     """
-    d = df[df["MARKET_PROB_HOME"].notna()]
+    cols = {k: v for k, v in PROB_COLS.items() if v in df.columns}
+    d = df.dropna(subset=list(cols.values()))
     rows = []
     for season, g in list(d.groupby("SEASON", sort=True)) + [("ALL", d)]:
         row = {"SEASON": season, "N": len(g)}
-        for name, col in PROB_COLS.items():
+        for name, col in cols.items():
             row[f"{name}_LOGLOSS"] = log_loss(g["HOME_WIN"], g[col])
             row[f"{name}_BRIER"] = brier_score(g["HOME_WIN"], g[col])
         rows.append(row)
@@ -113,7 +136,7 @@ def pick_bets(df: pd.DataFrame, prob_col: str, threshold: float = 0.0) -> pd.Dat
     EV per unit staked = p * decimal_odds - 1, at the closing moneyline.
     Returns one row per bet with BET_SIDE, BET_ODDS, BET_PROB, EV, WON, PROFIT.
     """
-    d = df[df["HOME_ML"].notna() & df["AWAY_ML"].notna()].copy()
+    d = df[df["HOME_ML"].notna() & df["AWAY_ML"].notna() & df[prob_col].notna()].copy()
     p = d[prob_col]
     dec_h = d["HOME_ML"].map(american_to_decimal)
     dec_a = d["AWAY_ML"].map(american_to_decimal)
@@ -152,7 +175,9 @@ def roi_summary(bets: pd.DataFrame, n_boot: int = 2000, seed: int = 0) -> dict:
 
 def betting_table(df: pd.DataFrame, thresholds: list[float]) -> pd.DataFrame:
     rows = []
-    for name in ("MODEL", "ELO"):
+    for name in ("MODEL", "BLEND", "MKT_RECAL", "ELO"):
+        if PROB_COLS[name] not in df.columns:
+            continue
         for t in thresholds:
             s = roi_summary(pick_bets(df, PROB_COLS[name], t))
             rows.append({"PROBS": name, "EV_THRESHOLD": t, **s})
@@ -180,7 +205,8 @@ def plot_reports(preds: pd.DataFrame, metrics: pd.DataFrame, bets: pd.DataFrame,
     import matplotlib.pyplot as plt
 
     out_dir.mkdir(parents=True, exist_ok=True)
-    colors = {"MODEL": "#2a6fdb", "ELO": "#e07b39", "MARKET": "#3a3a3a"}
+    colors = {"MODEL": "#2a6fdb", "BLEND": "#1b9e77", "ELO": "#e07b39", "MARKET": "#3a3a3a"}
+    colors = {k: v for k, v in colors.items() if f"{k}_LOGLOSS" in metrics.columns}
 
     # Log loss by season
     m = metrics[metrics["SEASON"] != "ALL"]
@@ -233,9 +259,21 @@ def plot_reports(preds: pd.DataFrame, metrics: pd.DataFrame, bets: pd.DataFrame,
 # --------------------------------------------------------------------------- main
 
 
+def add_market_logit(df: pd.DataFrame) -> pd.DataFrame:
+    p = df["MARKET_PROB_HOME"].clip(1e-6, 1 - 1e-6)
+    return df.assign(MARKET_LOGIT=np.log(p / (1 - p)))
+
+
 def run(games: pd.DataFrame, first_test: str, warmup: int, thresholds: list[float]):
-    feats = build_features(run_elo(games))
-    preds = walk_forward_predict(feats, first_test, warmup)
+    feats = add_market_logit(build_features(run_elo(games)))
+    preds = None
+    for name, features in MODEL_SPECS.items():
+        col = PROB_COLS[name]
+        out = walk_forward_predict(feats, first_test, warmup, features, col)
+        if preds is None:
+            preds = out
+        else:
+            preds = preds.merge(out[["GAME_ID", col]], on="GAME_ID", validate="one_to_one")
     return preds, compare_metrics(preds), betting_table(preds, thresholds)
 
 

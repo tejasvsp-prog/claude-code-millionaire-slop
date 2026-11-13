@@ -1,9 +1,10 @@
 # Backtest results
 
-**Bottom line: the model does not beat the market.** It is slightly better
-than Elo, clearly worse than the no-vig closing line, and betting it at
-closing prices lost about 3% per bet. That is roughly the bookmaker's vig,
-which is what you'd expect from a model with no real edge.
+**Bottom line: nothing here beats the market.** The model is slightly
+better than Elo and clearly worse than the no-vig closing line. Adding the
+market's own probability doesn't help either: putting the model's features
+on top of the closing line makes it *worse*. Betting at closing prices loses
+roughly the vig (2–4% per bet).
 
 ## Setup
 
@@ -12,86 +13,123 @@ which is what you'd expect from a model with no real edge.
   Reviews archive. 16,200 have a usable two-way closing line (average vig
   3.8%). One overtime game whose final score is missing was dropped, and one
   known score typo was fixed.
-- **Walk-forward:** test seasons are 2010-11 to 2019-20. Each is predicted by a
-  model trained only on earlier seasons, starting at 2008-09. 2007-08 is
+- **Walk-forward:** test seasons are 2010-11 to 2019-20. Each is predicted by
+  models trained only on earlier seasons, starting at 2008-09. 2007-08 is
   warm-up for Elo and team stats only.
-- **Model:** logistic regression on pre-game features: Elo difference,
-  rest-day difference, back-to-backs, season-to-date win % and point margin,
-  last-10 margin, neutral site, playoffs.
-- **Baselines:** Elo (K=20, 100-point home advantage, margin-of-victory
-  multiplier, 1/4 reversion to the mean each season; settings not tuned) and
-  the market's no-vig closing probability.
 - **Scored on:** the 12,260 test games that have a closing line.
+
+| Name | What it is |
+|---|---|
+| **Model** | Logistic regression on pre-game features only (no market info): Elo difference, season-to-date win % and margin, last-10 margin, rest difference, back-to-backs, 3-in-4 nights, travel distance, time-zone change, altitude, neutral site, playoffs |
+| **Blend** | Same, plus the market's no-vig probability (as log-odds) as a feature. Tests whether the features add anything *on top of* the market |
+| **Mkt recal** | The market's log-odds alone, refit each season. Tests whether the closing line has a systematic bias (e.g. underdogs overpriced) |
+| **Elo** | K=20, 100-point home advantage, margin-of-victory multiplier, 1/4 reversion to the mean per season; settings not tuned |
+| **Market** | No-vig closing probability (vig removed proportionally) |
 
 ## Probability quality
 
-Lower is better for both metrics. A coin flip scores 0.693 log loss and 0.25 Brier.
+Log loss: lower is better, and a coin flip scores 0.693.
 
-| Season | Games | Model LL | Elo LL | Market LL | Model Brier | Elo Brier | Market Brier |
-|---|---|---|---|---|---|---|---|
-| 2010-11 | 1310 | 0.5875 | 0.5899 | **0.5789** | 0.2012 | 0.2023 | **0.1973** |
-| 2011-12 | 1074 | 0.6027 | 0.6042 | **0.5822** | 0.2080 | 0.2083 | **0.1992** |
-| 2012-13 | 1306 | 0.5965 | 0.5923 | **0.5796** | 0.2043 | 0.2038 | **0.1982** |
-| 2013-14 | 1318 | 0.6081 | 0.6129 | **0.5904** | 0.2105 | 0.2128 | **0.2035** |
-| 2014-15 | 1311 | 0.5986 | 0.6033 | **0.5749** | 0.2065 | 0.2084 | **0.1965** |
-| 2015-16 | 1316 | 0.5783 | 0.5830 | **0.5688** | 0.1978 | 0.1994 | **0.1938** |
-| 2016-17 | 1309 | 0.6243 | 0.6280 | **0.6084** | 0.2175 | 0.2192 | **0.2106** |
-| 2017-18 | 1312 | 0.6152 | 0.6194 | **0.5909** | 0.2133 | 0.2148 | **0.2030** |
-| 2018-19 | 1312 | 0.6144 | 0.6187 | **0.5953** | 0.2130 | 0.2149 | **0.2044** |
-| 2019-20* | 692 | 0.6025 | 0.6161 | **0.5912** | 0.2084 | 0.2141 | **0.2028** |
-| **All** | 12260 | 0.6028 | 0.6064 | **0.5859** | 0.2081 | 0.2096 | **0.2009** |
+| Season | Games | Model | Blend | Mkt recal | Elo | **Market** |
+|---|---|---|---|---|---|---|
+| 2010-11 | 1310 | 0.5910 | 0.5823 | 0.5788 | 0.5899 | 0.5789 |
+| 2011-12 | 1074 | 0.6037 | 0.5848 | 0.5821 | 0.6042 | 0.5822 |
+| 2012-13 | 1306 | 0.5967 | 0.5851 | 0.5795 | 0.5923 | 0.5796 |
+| 2013-14 | 1318 | 0.6099 | 0.5933 | 0.5906 | 0.6129 | 0.5904 |
+| 2014-15 | 1311 | 0.5985 | 0.5757 | 0.5747 | 0.6033 | 0.5749 |
+| 2015-16 | 1316 | 0.5803 | 0.5690 | 0.5692 | 0.5830 | 0.5688 |
+| 2016-17 | 1309 | 0.6249 | 0.6106 | 0.6095 | 0.6280 | 0.6084 |
+| 2017-18 | 1312 | 0.6149 | 0.5928 | 0.5910 | 0.6194 | 0.5909 |
+| 2018-19 | 1312 | 0.6138 | 0.5976 | 0.5958 | 0.6187 | 0.5953 |
+| 2019-20* | 692 | 0.6012 | 0.5896 | 0.5909 | 0.6161 | 0.5912 |
+| **All** | 12260 | 0.6036 | 0.5881 | 0.5861 | 0.6064 | **0.5859** |
+
+Brier scores over all test games, where a coin flip scores 0.25 and lower is better:
+
+| Model | Blend | Mkt recal | Elo | Market |
+|---|---|---|---|---|
+| 0.2084 | 0.2017 | 0.2009 | 0.2096 | 0.2009 |
+
+Per-season Brier scores are in `reports/metrics_by_season.csv`.
 
 \* 2019-20 data ends in late January 2020.
 
-Paired differences in log loss per game, with bootstrap 95% CIs:
-- **Model vs Elo:** −0.0035 [−0.0054, −0.0017]. The model is better, and the gap is statistically real but small.
-- **Model vs market:** +0.0169 [+0.0135, +0.0203]. The market is clearly better in every season.
+Paired log-loss differences per game, with bootstrap 95% CIs:
+
+| Comparison | Difference | 95% CI | Reading |
+|---|---|---|---|
+| Model − Elo | −0.0028 | [−0.0047, −0.0008] | Model beats Elo (small, real) |
+| Blend − Market | +0.0022 | [+0.0008, +0.0036] | Adding features to the market makes it **worse** |
+| Mkt recal − Market | +0.0002 | [−0.0003, +0.0006] | No exploitable bias in the closing line |
 
 ![Log loss by season](reports/logloss_by_season.png)
 ![Calibration](reports/calibration.png)
 
-All three are well calibrated. The market wins on sharpness: it separates
-strong and weak teams more confidently and correctly.
+## What the market already knows
+
+Logistic-regression weights (standardized), fit on 2008-09 to 2018-19:
+
+| Feature | Model (no market) | Blend (with market) |
+|---|---|---|
+| Market log-odds | — | **0.956** |
+| Elo difference | **0.698** | 0.137 |
+| Season-to-date margin | 0.251 | 0.044 |
+| Home team on a back-to-back | −0.069 | −0.008 |
+| Away team on a back-to-back | +0.097 | −0.004 |
+| Travel difference (per 1000 km) | +0.046 | +0.054 |
+| Away time-zone change | +0.027 | +0.024 |
+| Altitude (DEN/UTA at home) | +0.040 | +0.025 |
+
+- **Rest and form are priced in.** Back-to-backs matter on their own, but
+  their effect disappears once the market probability is included.
+- **Travel, time-zone and altitude look like noise.** They keep small weights
+  in the blend, but the blend scores worse than the market out of sample.
+  Adding the schedule features also made the standalone model slightly worse
+  (0.6036 vs 0.6028 without them).
 
 ## Betting simulation
 
 Flat 1-unit bets at the closing moneyline. In each game, bet the side with the
-higher expected value under the model, if that EV is above the threshold.
-CIs are bootstrap 95%.
+higher expected value, if that EV is above the threshold. CIs are bootstrap 95%.
 
 | Probabilities | EV threshold | Bets | Win rate | Profit (units) | ROI | ROI 95% CI |
 |---|---|---|---|---|---|---|
-| Model | 0% | 9685 | 42.4% | −266.4 | −2.8% | [−5.8%, +0.4%] |
-| Model | 2% | 8509 | 40.4% | −203.4 | −2.4% | [−5.7%, +1.1%] |
-| Model | 5% | 7010 | 37.5% | −184.5 | −2.6% | [−6.5%, +1.2%] |
-| Model | 10% | 5135 | 33.3% | −196.1 | −3.8% | [−8.3%, +1.3%] |
+| Model | 0% | 9748 | 42.3% | −273.2 | −2.8% | [−5.9%, +0.3%] |
+| Model | 5% | 7161 | 37.8% | −165.6 | −2.3% | [−6.0%, +1.5%] |
+| Model | 10% | 5288 | 33.3% | −220.5 | −4.2% | [−8.9%, +0.4%] |
+| Blend | 0% | 5000 | 49.9% | −102.8 | −2.1% | [−5.6%, +1.4%] |
+| Blend | 2% | 3092 | 46.3% | −81.2 | −2.6% | [−7.3%, +1.9%] |
+| Blend | 5% | 1526 | 41.1% | −34.7 | −2.3% | [−9.3%, +5.2%] |
+| Blend | 10% | 577 | 38.8% | +35.1 | +6.1% | [−7.1%, +20.5%] |
+| Mkt recal | 0% | 98 | 68.4% | +0.1 | +0.1% | [−13.8%, +12.9%] |
 | Elo | 0% | 10022 | 43.4% | −292.9 | −2.9% | [−5.8%, 0.0%] |
-| Elo | 10% | 5818 | 35.2% | −151.1 | −2.6% | [−7.0%, +1.8%] |
 | Always bet home | — | 12260 | 58.9% | −495.6 | −4.0% | [−5.7%, −2.3%] |
 | Always bet favorite | — | 12260 | 68.6% | −504.9 | −4.1% | [−5.3%, −3.0%] |
 
-![Cumulative profit](reports/cumulative_profit.png)
+All thresholds are in `reports/betting_summary.csv`.
 
-- **No strategy made money.** None came near the 10% ROI alarm, so there's
-  no sign of leakage.
-- **Bigger "edges" don't help.** Raising the EV threshold doesn't improve
-  ROI, so the model's disagreements with the market are noise rather than
-  information.
-- **Mostly underdog bets.** 65% of the model's bets are on market
-  underdogs. Its probabilities are less extreme than the market's, so it
-  keeps "finding value" on longshots.
+- **No strategy made reliable money.** None tripped the 10% ROI alarm.
+- **The +6.1% for Blend at 10% is noise.** Its interval runs from −7% to
+  +20%, it's the best of 16 strategy and threshold combinations, and the
+  Blend's probabilities are measurably worse than the market's.
+- **Mkt recal almost never bets.** Its re-fitted probabilities rarely
+  disagree with the market by more than the vig, which confirms the closing
+  line is well calibrated.
 - **Betting blindly at the close loses about the vig** (about 4%), which
   confirms the odds math and settlement are wired up correctly.
 
+![Cumulative profit](reports/cumulative_profit.png)
+
 ## Checks performed
 
-- **Pipeline (all automated tests, 80 in total):**
-  - Each game's result was flipped in turn; no Elo probability or feature for
-    that game or any earlier game changed.
+- **Pipeline (all automated tests, 85 in total):**
+  - Each game's result was flipped in turn; no Elo probability or feature,
+    including the travel and schedule ones, changed for that game or any
+    earlier game.
   - Every model is trained strictly on seasons before its test season (asserted in code).
   - A deliberately leaked result pushes ROI past the 10% alarm, so the alarm works.
-  - On simulated data where the market equals the true probabilities, the
-    model can't beat it.
+  - On simulated data where the market equals the true probabilities, no
+    model beats it.
 - **Data:**
   - Rows pair correctly into games, team names are all recognised, and every
     final score is at least the sum of its quarters.
@@ -99,15 +137,16 @@ CIs are bootstrap 95%.
   - The market's average home-win probability (0.595) matches the actual
     home-win rate (0.594).
 
-## Caveats and what could change the answer
+## What could change the answer
 
-- **Betting at the close is optimistic.** In practice you bet earlier, at
-  a worse or better price. Opening lines are in the raw data (`Open` is a
-  spread/total, not a moneyline), so true opening moneylines would need
-  another source.
-- **The data is old.** It ends in January 2020. Newer seasons need another
-  odds source (e.g. a paid historical odds API, with a key in `.env`).
-- **Features are basic.** There's nothing on injuries, rest decisions,
-  lineups or travel, which is the information the market prices in and
-  this model doesn't have. Player-level data is the most likely place to
-  find real signal.
+The closing line already reflects everything that can be computed from
+schedules and past scores. A real edge would need information the market
+is slow to absorb, or better prices than the close:
+
+1. **Injuries and lineups**: who actually plays, and late scratches.
+   Player-level data (on/off ratings, minutes) is the most likely source of signal.
+2. **Earlier prices.** Opening moneylines let you test whether the model
+   predicts where the line *moves*, which is a more realistic betting setup
+   than betting at the close.
+3. **Newer seasons.** This data ends in January 2020. Testing on recent
+   seasons needs a historical odds source (most are paid, with a key in `.env`).
