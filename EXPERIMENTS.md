@@ -72,3 +72,28 @@ which cross-checks the harness.
   seasons. Only home advantage moved, and the logistic regression absorbs
   that through its intercept. Better Elo settings won't help; gains have to
   come from new information or a better way to use margins.
+
+---
+
+## Exp 2: predict point margin, convert to win probability (2026-11-13). REVERTED
+
+- **Idea:** a point margin carries more information than win/loss, so
+  regressing on margin might estimate team strength with less noise.
+- **Change:** in `src/model.py`, linear regression of point margin on the
+  same features, then P(home win) = Φ(predicted margin / σ). σ is the
+  residual standard deviation on the training seasons.
+  No new features, so the locked leakage test covers it.
+
+| Season | LL before → after | Brier before → after |
+|---|---|---|
+| 2015-16 | 0.5803 → 0.5824 | 0.1987 → 0.1994 |
+| 2016-17 | 0.6249 → 0.6227 | 0.2178 → 0.2170 |
+| 2017-18 | 0.6149 → 0.6149 | 0.2132 → 0.2132 |
+| **Average** | **0.6067 → 0.6067** (0.60670 → 0.60667) | 0.2099 → 0.2099 |
+
+- **Decision: REVERTED.** The average gain is 0.00003, far below 0.002, and
+  only 1 of 3 seasons improved. With a tie, keep the simpler, existing model.
+- **Learned:** margins and win/loss give the same answer here. The inputs
+  already encode margin (margin-of-victory Elo, season-to-date margin), so
+  changing the target adds nothing. Exps 1 and 2 both suggest the ceiling is
+  the information in the features, not how the model uses them.

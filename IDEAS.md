@@ -3,10 +3,12 @@
 Ordered by expected value. Mark done with the experiment number.
 
 ## Untried
-1. **Predict point margin, then convert it to a win probability.** Moved up:
-   exp 1 showed the Elo signal is saturated, so the next lever is using
-   margins better. A linear margin model plus a normal CDF with a fitted
-   spread uses more information per game than win/loss.
+1. **Player availability** (moved up; the real lever). Exps 1 and 2 both
+   hit a ceiling set by the information in the features. The market's edge
+   is mostly injuries and rest decisions. Needs per-game player minutes
+   from nba_api (box scores) pulled from a home connection; then a feature
+   for the share of last season's minutes missing tonight, using only
+   pre-game info (who played the team's previous game is a leak-free proxy).
 2. **Tune the regularization strength (C, L1 vs L2) by season-wise CV inside
    the training seasons.** 15 partly redundant features with C=1 may be
    fitting noise. (New, after exp 1.)
@@ -23,9 +25,12 @@ Ordered by expected value. Mark done with the experiment number.
    priority now that exp 1 found the defaults optimal.
 7. **Calibration** (Platt or isotonic). Logistic regression is usually
    already calibrated, so expect little.
-8. **Player availability.** Not possible with current data (no player
-   minutes offline); needs an nba_api pull from a home connection.
+8. **Training-window length.** Train on the last N seasons only, with N
+   chosen by CV inside the training seasons. The league style changed a lot
+   between 2008 and 2018 (pace, 3-pointers). (New, after exp 2.)
 
 ## Done
 - ~~Tune Elo (K, season carryover, home advantage) inside the training
   seasons.~~ Exp 1, REVERTED (0.6067 → 0.6069): the defaults were already optimal.
+- ~~Predict point margin, then convert it to a win probability.~~ Exp 2,
+  REVERTED (0.60670 → 0.60667): margins and win/loss give the same answer.
