@@ -1,0 +1,16 @@
+# Secrets
+.env
+
+# Cached / derived data (regenerate from API pulls)
+data/raw/*
+data/processed/*
+!data/raw/.gitkeep
+!data/processed/.gitkeep
+
+# Python
+__pycache__/
+*.pyc
+.pytest_cache/
+.venv/
+venv/
+.ipynb_checkpoints/
